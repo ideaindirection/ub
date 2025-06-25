@@ -1,4 +1,4 @@
-"""Example usage of server_utils for different types of servers.
+"""Example usage of ub for different types of servers.
 
 This demonstrates how to use the port conflict handling utilities
 with various server frameworks.
@@ -8,7 +8,7 @@ with various server frameworks.
 # Example 1: FastAPI/Uvicorn (like your PromptPulse)
 def example_fastapi():
     from fastapi import FastAPI
-    from seb_thor_priv.server_utils import start_uvicorn_with_port_handling
+    from ub import start_uvicorn_with_port_handling
 
     app = FastAPI()
 
@@ -25,7 +25,7 @@ def example_fastapi():
 # Example 2: Flask
 def example_flask():
     from flask import Flask
-    from seb_thor_priv.server_utils import start_flask_with_port_handling
+    from ub import start_flask_with_port_handling
 
     app = Flask(__name__)
 
@@ -39,7 +39,7 @@ def example_flask():
 
 # Example 3: Generic server with custom handler
 def example_generic_server():
-    from seb_thor_priv.server_utils import start_server_with_port_handling
+    from ub import start_server_with_port_handling
     import http.server
     import socketserver
 
@@ -58,7 +58,7 @@ def example_generic_server():
 
 # Example 4: Manual port conflict handling
 def example_manual_handling():
-    from seb_thor_priv.server_utils import handle_port_conflict
+    from ub import handle_port_conflict
     import uvicorn
 
     # Your app setup code here
@@ -76,7 +76,7 @@ def example_manual_handling():
 
 # Example 5: Quick port availability check
 def example_port_check():
-    from seb_thor_priv.server_utils import (
+    from ub import (
         check_port_available,
         get_processes_using_port,
         find_available_port,
@@ -95,6 +95,29 @@ def example_port_check():
         # Find an alternative
         alt_port = find_available_port(port + 1)
         print(f"Alternative port: {alt_port}")
+
+
+# Example 6: Context manager usage
+def example_context_managers():
+    from ub import port_context, fastapi_context, reserve_port
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    # Basic port context
+    with port_context("0.0.0.0", 8000, "My API") as port:
+        print(f"Using port {port}")
+        # Your server logic here
+
+    # FastAPI context manager
+    with fastapi_context(app, port=8000, reload=True) as port:
+        print(f"FastAPI running on port {port}")
+        # Do work while server runs
+
+    # Reserve multiple ports
+    with reserve_port("0.0.0.0", 8000, count=3) as ports:
+        print(f"Reserved ports: {ports}")
+        # Use ports for multiple services
 
 
 if __name__ == "__main__":
