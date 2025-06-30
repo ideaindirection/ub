@@ -356,21 +356,28 @@ def start_server_with_port_handling(
     host: str = "0.0.0.0",
     port: int = 8000,
     service_name: Optional[str] = None,
+    add_cli_interface: bool = False,
+    cli_description: str = "Run HTTP service",
+    cli_extra_args: Optional[List[Dict[str, Any]]] = None,
     **server_kwargs,
 ):
-    """Start a server with automatic port conflict handling.
+    """Start a server with automatic port conflict handling and optional CLI interface.
 
     Args:
         server_func: Function to start the server (e.g., uvicorn.run)
         host: Host address
         port: Desired port
         service_name: Name of the service for user messages
+        add_cli_interface: If True, parse CLI arguments for host, port, and any extra args
+        cli_description: Description for the CLI argument parser
+        cli_extra_args: List of additional argument dictionaries for CLI argparse
         **server_kwargs: Additional arguments to pass to server_func
 
     Example:
         from ub import start_server_with_port_handling
         import uvicorn
 
+        # Basic usage without CLI
         start_server_with_port_handling(
             uvicorn.run,
             host="0.0.0.0",
@@ -379,8 +386,32 @@ def start_server_with_port_handling(
             app=app,
             reload=True
         )
+
+        # With CLI interface
+        start_server_with_port_handling(
+            uvicorn.run,
+            add_cli_interface=True,
+            cli_description="Run My API",
+            cli_extra_args=[
+                {"name": "--no-reload", "action": "store_true", "help": "Disable reload"}
+            ],
+            app=app
+        )
     """
     try:
+        if add_cli_interface:
+            # Parse CLI arguments
+            parser = _create_cli_parser(host, port, cli_description, cli_extra_args)
+            args = parser.parse_args()
+
+            # Extract parsed arguments
+            parsed_kwargs = vars(args)
+            host = parsed_kwargs.pop('host')
+            port = parsed_kwargs.pop('port')
+
+            # Merge parsed arguments with server_kwargs
+            server_kwargs = {**server_kwargs, **parsed_kwargs}
+
         final_port = handle_port_conflict(host, port, service_name)
         service_name = service_name or "Server"
         print(f"🚀 Starting {service_name} on http://{host}:{final_port}")
@@ -422,6 +453,191 @@ def start_flask_with_port_handling(
     start_server_with_port_handling(
         flask_run, host=host, port=port, service_name="Flask Server", **kwargs
     )
+
+
+# Convenience functions for common server types with optional CLI interface
+def start_uvicorn_with_cli(
+    app,
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    description: str = "Run FastAPI service",
+    **kwargs,
+):
+    """Start a Uvicorn/FastAPI server with CLI argument parsing and port conflict handling.
+
+    Args:
+        app: The FastAPI application (can be string like "module:app" or actual app object)
+        host: Default host address
+        port: Default port number
+        description: Description for the argument parser
+        **kwargs: Additional arguments to pass to uvicorn.run
+
+    Example:
+        if __name__ == "__main__":
+            start_uvicorn_with_cli(
+                "c_http_services.embed.embeddings_server:app",
+                description="Run Embed HTTP service"
+            )
+    """
+    import uvicorn
+
+    extra_args = [
+        {
+            "name": "--no-reload",
+            "action": "store_true",
+            "help": "Disable uvicorn reload",
+        }
+    ]
+
+    # Handle the no-reload flag by converting to reload
+    def uvicorn_wrapper(**run_kwargs):
+        no_reload = run_kwargs.pop('no_reload', False)
+        reload = (
+            not no_reload
+            if 'reload' not in run_kwargs
+            else run_kwargs.get('reload', True)
+        )
+        uvicorn.run(app=app, reload=reload, **run_kwargs)
+
+    start_server_with_port_handling(
+        uvicorn_wrapper,
+        host=host,
+        port=port,
+        service_name="FastAPI Server",
+        add_cli_interface=True,
+        cli_description=description,
+        cli_extra_args=extra_args,
+        **kwargs,
+    )
+
+
+def start_flask_with_cli(
+    app,
+    host: str = "0.0.0.0",
+    port: int = 5000,
+    description: str = "Run Flask HTTP service",
+    **kwargs,
+):
+    """Start a Flask server with CLI argument parsing and port conflict handling.
+
+    Args:
+        app: The Flask application object
+        host: Default host address
+        port: Default port number
+        description: Description for the argument parser
+        **kwargs: Additional arguments to pass to Flask's run method
+
+    Example:
+        if __name__ == "__main__":
+            start_flask_with_cli(app, description="Run My Flask App")
+    """
+    extra_args = [
+        {"name": "--debug", "action": "store_true", "help": "Enable Flask debug mode"}
+    ]
+
+    def flask_wrapper(**run_kwargs):
+        app.run(**run_kwargs)
+
+    start_server_with_port_handling(
+        flask_wrapper,
+        host=host,
+        port=port,
+        service_name="Flask Server",
+        add_cli_interface=True,
+        cli_description=description,
+        cli_extra_args=extra_args,
+        **kwargs,
+    )
+
+
+def start_server_with_cli(
+    server_func,
+    app,
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    service_name: Optional[str] = None,
+    description: str = "Run HTTP service",
+    extra_args: Optional[List[Dict[str, Any]]] = None,
+    **server_kwargs,
+):
+    """Generic server starter with CLI argument parsing and port conflict handling.
+
+    Args:
+        server_func: Function to start the server (e.g., uvicorn.run)
+        app: The application object or string
+        host: Default host address
+        port: Default port number
+        service_name: Name of the service for user messages
+        description: Description for the argument parser
+        extra_args: List of additional argument dictionaries for argparse
+        **server_kwargs: Additional arguments to pass to server_func
+
+    Example:
+        start_server_with_cli(
+            uvicorn.run,
+            "myapp:app",
+            description="Run My API",
+            extra_args=[
+                {"name": "--workers", "type": int, "default": 1, "help": "Number of workers"},
+                {"name": "--log-level", "default": "info", "help": "Log level"}
+            ]
+        )
+    """
+    start_server_with_port_handling(
+        server_func,
+        host=host,
+        port=port,
+        service_name=service_name,
+        add_cli_interface=True,
+        cli_description=description,
+        cli_extra_args=extra_args,
+        app=app,
+        **server_kwargs,
+    )
+
+
+def _create_cli_parser(
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    description: str = "Run HTTP service",
+    extra_args: Optional[List[Dict[str, Any]]] = None,
+):
+    """Create a CLI argument parser with common server arguments.
+
+    Args:
+        host: Default host address
+        port: Default port number
+        description: Description for the argument parser
+        extra_args: List of additional argument dictionaries for argparse
+
+    Returns:
+        Configured ArgumentParser instance
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(
+        '--host',
+        type=str,
+        default=host,
+        help=f'Host to bind the service (default: {host})',
+    )
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=port,
+        help=f'Port to run the service on (default: {port})',
+    )
+
+    # Add any extra arguments provided
+    if extra_args:
+        for arg_config in extra_args:
+            # Make a copy to avoid modifying the original
+            config = arg_config.copy()
+            name = config.pop("name")
+            parser.add_argument(name, **config)
+
+    return parser
 
 
 def usage_test():
